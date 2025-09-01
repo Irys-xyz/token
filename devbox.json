@@ -1,0 +1,51 @@
+{
+  "name":        "Irys Token Devbox",
+  "description": "Token for the world's first programmable datachain",
+  "packages": [
+    "nodejs@20",
+    "yarn@1.22.19",
+    "python@3.11",
+    "git@2.42",
+    "curl@8.4",
+    "jq@1.7",
+    "gh@2.40",
+    "python311Packages.slither-analyzer@latest",
+    "python311Packages.pip@latest",
+    "go@1.21",
+    "graphviz@latest",
+    "pre-commit@latest",
+    "wget@latest"
+  ],
+  "shell": {
+    "init_hook": [
+      "echo 'Setting up Ethereum development environment...'",
+      "npm --version && echo 'Node.js and npm are ready'",
+      "python3 --version && echo 'Python is ready'",
+      "echo 'Remember to create .env with your keys (see instructions.md)'",
+      "npm init -y",
+      "npm install",
+      "npm install --save-dev hardhat",
+      "npm install @openzeppelin/contracts-upgradeable @openzeppelin/hardhat-upgrades",
+      "npm install @gnosis.pm/safe-contracts @gnosis.pm/safe-core-sdk",
+      "pip install mythril manticore[native]",
+      "npm install --save-dev solhint surya sol2uml hardhat-contract-sizer hardhat-gas-reporter",
+      "npm install --save-dev @nomicfoundation/hardhat-chai-matchers"
+    ],
+    "scripts": {
+      "compile":                "npx hardhat compile",
+      "test":                   "npx hardhat test",
+      "coverage":               "npx hardhat coverage",
+      "deploy:testnet":         "npx hardhat run scripts/deploy.js --network sepolia",
+      "deploy:mainnet":         "npx hardhat run scripts/deploy.js --network mainnet",
+      "verify":                 "npx hardhat verify --network",
+      "node":                   "npx hardhat node",
+      "clean":                  "npx hardhat clean"
+    }
+  },
+  "env": {
+    "NODE_ENV":        "development",
+    "HARDHAT_NETWORK": "localhost",
+    "PYTHONPATH":      "$PWD/scripts/analysis:$PYTHONPATH",
+    "PATH":            "$HOME/.local/bin:$PATH"
+  }
+}
