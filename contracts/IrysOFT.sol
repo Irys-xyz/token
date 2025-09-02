@@ -40,7 +40,8 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
     function initialize(
         string memory _name,
         string memory _symbol,
-        address _delegate
+        address _delegate,
+        uint256 _maxSupply
     ) public initializer {
         __Ownable_init(_delegate);
         __UUPSUpgradeable_init();
@@ -49,7 +50,7 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
         
         // Initialize storage
         OFTStorage storage $ = _getOFTStorage();
-        $.maxSupply = 2_000_000_000 * 10**decimals(); // 2 billion tokens
+        $.maxSupply = _maxSupply;
         $.minters[_delegate] = true;
         $.burners[_delegate] = true;
         
