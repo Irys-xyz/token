@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+bower_components/
+
+# Python
+.venv/
+venv/
+ENV/
+env/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+
+
+# Lock files (keep package-lock.json for npm projects)
+yarn.lock
+pnpm-lock.yaml
+
+# Devbox
+.devbox/
+

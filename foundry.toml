@@ -1,0 +1,25 @@
+[profile.default]
+solc-version = '0.8.22'
+src = 'contracts'
+out = 'out'
+test = 'test'
+cache_path = 'cache/foundry'
+verbosity = 3
+optimizer = true
+optimizer_runs = 20_000
+
+libs = [
+    'node_modules/@layerzerolabs/toolbox-foundry/lib',
+    'node_modules',
+]
+
+remappings = [
+    'ds-test/=node_modules/@layerzerolabs/toolbox-foundry/lib/ds-test',
+    'forge-std/=node_modules/@layerzerolabs/toolbox-foundry/lib/forge-std',
+    '@layerzerolabs/=node_modules/@layerzerolabs/',
+    '@openzeppelin/=node_modules/@openzeppelin/',
+    '@layerzerolabs/script-devtools-evm-foundry/=node_modules/@layerzerolabs/script-devtools-evm-foundry/'
+]
+
+[fuzz]
+runs = 1000
