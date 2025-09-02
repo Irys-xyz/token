@@ -60,7 +60,8 @@ contract IrysOFTTest is TestHelperOz5 {
             IrysOFT.initialize.selector,
             "IrysToken",
             "IRYS",
-            owner
+            owner,
+            MAX_SUPPLY
         );
         ERC1967Proxy proxy = new ERC1967Proxy(address(tokenImpl), initData);
         token = IrysOFT(address(proxy));
@@ -70,8 +71,8 @@ contract IrysOFTTest is TestHelperOz5 {
         IrysOFTTestable bOFTTestable = new IrysOFTTestable(address(endpoints[bEid]));
 
         // Initialize the testable contracts
-        aOFTTestable.initialize("aOFT", "aOFT", owner);
-        bOFTTestable.initialize("bOFT", "bOFT", owner);
+        aOFTTestable.initialize("aOFT", "aOFT", owner, MAX_SUPPLY);
+        bOFTTestable.initialize("bOFT", "bOFT", owner, MAX_SUPPLY);
 
         aOFT = IrysOFT(address(aOFTTestable));
         bOFT = IrysOFT(address(bOFTTestable));
@@ -540,13 +541,13 @@ contract IrysOFTTest is TestHelperOz5 {
     function test_zero_address_validation() public {
         vm.startPrank(owner);
 
-        // Note: The contract currently allows setting zero address as minter/burner
-        // This is a potential issue but we'll test the actual behavior
+        // Test: Setting zero address as minter should revert
+        vm.expectRevert(IrysOFT.IrysOFT__ZeroAddress.selector);
         token.setMinter(address(0), true);
-        assertTrue(token.isMinter(address(0)));
 
+        // Test: Setting zero address as burner should revert
+        vm.expectRevert(IrysOFT.IrysOFT__ZeroAddress.selector);
         token.setBurner(address(0), true);
-        assertTrue(token.isBurner(address(0)));
 
         // Create room for minting
         token.burn(owner, 1000 ether);

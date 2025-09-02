@@ -11,9 +11,10 @@ contract IrysOFTMock is IrysOFT {
     function initializeMock(
         string memory _name,
         string memory _symbol,
-        address _delegate
+        address _delegate,
+        uint256 _maxSupply
     ) public initializer {
-        initialize(_name, _symbol, _delegate);
+        initialize(_name, _symbol, _delegate, _maxSupply);
     }
 
     function mint(address _to, uint256 _amount) public override {

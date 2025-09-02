@@ -18,13 +18,14 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
     }
     
     // keccak256(abi.encode(uint256(keccak256("irysOFT.storage.OFT")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant OFTStorageLocation = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
+    bytes32 private constant OFT_STORAGE_LOCATION = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
     
     uint256[50] private __gap;
     
     error IrysOFT__MaxSupplyExceeded();
     error IrysOFT__UnauthorizedMinter();
     error IrysOFT__UnauthorizedBurner();
+    error IrysOFT__ZeroAddress();
     
     event MinterSet(address indexed account, bool enabled);
     event BurnerSet(address indexed account, bool enabled);
@@ -63,7 +64,7 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
     
     function _getOFTStorage() private pure returns (OFTStorage storage $) {
         assembly {
-            $.slot := OFTStorageLocation
+            $.slot := OFT_STORAGE_LOCATION
         }
     }
     
@@ -85,12 +86,14 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
     }
     
     function setMinter(address account, bool enabled) external onlyOwner {
+        if (account == address(0)) revert IrysOFT__ZeroAddress();
         OFTStorage storage $ = _getOFTStorage();
         $.minters[account] = enabled;
         emit MinterSet(account, enabled);
     }
     
     function setBurner(address account, bool enabled) external onlyOwner {
+        if (account == address(0)) revert IrysOFT__ZeroAddress();
         OFTStorage storage $ = _getOFTStorage();
         $.burners[account] = enabled;
         emit BurnerSet(account, enabled);

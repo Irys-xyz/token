@@ -17,7 +17,7 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     }
     
     // keccak256(abi.encode(uint256(keccak256("irysOFT.storage.OFT")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant OFTStorageLocation = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
+    bytes32 private constant OFT_STORAGE_LOCATION = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
     
     uint256[50] private __gap;
     
@@ -37,7 +37,8 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     function initialize(
         string memory _name,
         string memory _symbol,
-        address _delegate
+        address _delegate,
+        uint256 _maxSupply
     ) public initializer {
         __Ownable_init(_delegate);
         __UUPSUpgradeable_init();
@@ -46,7 +47,7 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
         
         // Initialize storage
         OFTStorage storage $ = _getOFTStorage();
-        $.maxSupply = 2_000_000_000 * 10**decimals(); // 2 billion tokens
+        $.maxSupply = _maxSupply;
         $.minters[_delegate] = true;
         $.burners[_delegate] = true;
         
@@ -59,7 +60,7 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     
     function _getOFTStorage() private pure returns (OFTStorage storage $) {
         assembly {
-            $.slot := OFTStorageLocation
+            $.slot := OFT_STORAGE_LOCATION
         }
     }
     
