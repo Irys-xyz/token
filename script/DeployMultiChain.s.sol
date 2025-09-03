@@ -10,9 +10,8 @@ contract DeployMultiChainScript is Script {
     // LayerZero V2 Endpoints (Universal address for most chains)
     address constant UNIVERSAL_ENDPOINT_V2 = 0x1a44076050125825900e736c501f859c50fE728c;
     
-    // Specific endpoints where different
-    address constant ETHEREUM_ENDPOINT = 0x66A71Dcef29A0fFBDBE3c6a460a3B5BC225Cd675;
-    address constant SEPOLIA_ENDPOINT = 0x6EDCE65403992e310A62460808c4b910D972f10f;
+    // Specific endpoints for testnets where Universal endpoint not available
+    address constant SEPOLIA_ENDPOINT_V2 = 0x6EDCE65403992e310A62460808c4b910D972f10f;
     
     // Chain configurations
     struct ChainConfig {
@@ -25,9 +24,9 @@ contract DeployMultiChainScript is Script {
     function getChainConfig() internal view returns (ChainConfig memory) {
         uint256 chainId = block.chainid;
         
-        // Mainnets
+        // Mainnets (all use Universal V2 Endpoint)
         if (chainId == 1) {
-            return ChainConfig("Ethereum", 1, ETHEREUM_ENDPOINT, "https://etherscan.io");
+            return ChainConfig("Ethereum", 1, UNIVERSAL_ENDPOINT_V2, "https://etherscan.io");
         } else if (chainId == 42161) {
             return ChainConfig("Arbitrum", 42161, UNIVERSAL_ENDPOINT_V2, "https://arbiscan.io");
         } else if (chainId == 137) {
@@ -37,7 +36,7 @@ contract DeployMultiChainScript is Script {
         }
         // Testnets
         else if (chainId == 11155111) {
-            return ChainConfig("Sepolia", 11155111, SEPOLIA_ENDPOINT, "https://sepolia.etherscan.io");
+            return ChainConfig("Sepolia", 11155111, SEPOLIA_ENDPOINT_V2, "https://sepolia.etherscan.io");
         } else if (chainId == 421614) {
             return ChainConfig("Arbitrum Sepolia", 421614, UNIVERSAL_ENDPOINT_V2, "https://sepolia.arbiscan.io");
         } else if (chainId == 80002) {
@@ -82,16 +81,16 @@ contract DeployMultiChainScript is Script {
         // 10 billion tokens:   10000000000000000000000000000
         uint256 maxSupply = vm.envOr("MAX_SUPPLY", uint256(2_000_000_000 * 10**18)); // Default 2B tokens
         
-        // 3. Encode initialization data
+        // 3. Encode initialization data with minting included
         bytes memory initData = abi.encodeWithSelector(
             IrysOFT.initialize.selector,
             tokenName,
             tokenSymbol,
             deployer,  // deployer becomes owner and initial minter/burner
-            maxSupply
+            maxSupply  // This will be minted to deployer during initialization
         );
         
-        // 4. Deploy proxy with initialization
+        // 4. Deploy proxy with initialization (minting happens in constructor via initialize)
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         console.log("Proxy deployed at:", address(proxy));
         
@@ -105,6 +104,7 @@ contract DeployMultiChainScript is Script {
         console.log("Token decimals:", token.decimals());
         console.log("Max supply:", token.getMaxSupply());
         console.log("Current supply:", token.getCurrentSupply());
+        console.log("Deployer balance:", token.balanceOf(deployer)); // Should equal maxSupply
         console.log("Owner:", token.owner());
         console.log("Deployer is minter:", token.isMinter(deployer));
         console.log("Deployer is burner:", token.isBurner(deployer));

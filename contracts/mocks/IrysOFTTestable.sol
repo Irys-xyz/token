@@ -24,6 +24,7 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     error IrysOFT__MaxSupplyExceeded();
     error IrysOFT__UnauthorizedMinter();
     error IrysOFT__UnauthorizedBurner();
+    error IrysOFT__ZeroAddress();
     
     event MinterSet(address indexed account, bool enabled);
     event BurnerSet(address indexed account, bool enabled);
@@ -82,12 +83,14 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     }
     
     function setMinter(address account, bool enabled) external onlyOwner {
+        if (account == address(0)) revert IrysOFT__ZeroAddress();
         OFTStorage storage $ = _getOFTStorage();
         $.minters[account] = enabled;
         emit MinterSet(account, enabled);
     }
     
     function setBurner(address account, bool enabled) external onlyOwner {
+        if (account == address(0)) revert IrysOFT__ZeroAddress();
         OFTStorage storage $ = _getOFTStorage();
         $.burners[account] = enabled;
         emit BurnerSet(account, enabled);
