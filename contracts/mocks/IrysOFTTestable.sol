@@ -115,10 +115,6 @@ contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable,
         return _burners[account];
     }
 
-    function getCurrentSupply() external view returns (uint256) {
-        return totalSupply();
-    }
-
     function getMaxSupply() external view returns (uint256) {
         return _maxSupply;
     }

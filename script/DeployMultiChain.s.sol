@@ -102,7 +102,7 @@ contract DeployMultiChainScript is Script {
         console.log("Token name:", token.name());
         console.log("Token symbol:", token.symbol());
         console.log("Token decimals:", token.decimals());
-        console.log("Total supply:", token.getCurrentSupply());
+        console.log("Total supply:", token.totalSupply());
         console.log("Owner:", token.owner());
         console.log("Owner balance:", token.balanceOf(deployer));
         console.log("Contract paused:", token.paused());

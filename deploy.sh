@@ -227,7 +227,6 @@ show_post_deployment() {
     echo "# Check deployment"
     echo "cast call <PROXY_ADDRESS> \"name()(string)\" --rpc-url \$RPC_URL"
     echo "cast call <PROXY_ADDRESS> \"totalSupply()(uint256)\" --rpc-url \$RPC_URL"
-    echo "cast call <PROXY_ADDRESS> \"getCurrentSupply()(uint256)\" --rpc-url \$RPC_URL"
     echo ""
     echo "# Configure LayerZero peer (for cross-chain bridging)"
     echo "cast send <PROXY_ADDRESS> \"setPeer(uint32,bytes32)\" <REMOTE_EID> <REMOTE_OFT_ADDRESS_BYTES32> --private-key \$PRIVATE_KEY --rpc-url \$RPC_URL"

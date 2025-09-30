@@ -61,10 +61,6 @@ contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgr
 
         emit Initialized(_name, _symbol, _delegate, _totalSupply);
     }
-    
-    function getCurrentSupply() external view returns (uint256) {
-        return totalSupply();
-    }
 
     function pause() external onlyOwner {
         _pause();

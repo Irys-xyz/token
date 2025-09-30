@@ -223,8 +223,8 @@ contract IrysOFTTest is TestHelperOz5 {
 
     function test_supply_tracking() public {
         // Check fixed supply - entire supply minted at deployment
-        assertEq(aOFT.getCurrentSupply(), MAX_SUPPLY);
         assertEq(aOFT.totalSupply(), MAX_SUPPLY);
+        assertEq(bOFT.totalSupply(), MAX_SUPPLY);
     }
 
     // ============ EDGE CASES & SECURITY TESTS ============
