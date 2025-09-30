@@ -9,20 +9,17 @@ import { OFTUpgradeable } from "@layerzerolabs/oft-evm-upgradeable/contracts/oft
 // Test version of IrysOFT that allows direct initialization (no proxy required)
 // Note: Retains old mint/burn functionality for testing purposes only
 contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgradeable {
-    // ERC-7201 namespaced storage pattern
-    struct OFTStorage {
-        uint256 maxSupply;
-        mapping(address => bool) minters;
-        mapping(address => bool) burners;
-    }
-
-    // keccak256(abi.encode(uint256(keccak256("irysOFT.storage.OFT")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant OFT_STORAGE_LOCATION = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
-
+    // Traditional state variables (mirroring production contract structure)
     // Two-step ownership state
     address private _pendingOwner;
 
-    uint256[49] private __gap;
+    // Additional state for testing mint/burn functionality
+    uint256 private _maxSupply;
+    mapping(address => bool) private _minters;
+    mapping(address => bool) private _burners;
+
+    // Storage gap for upgradeability (46 slots to account for the 3 storage variables above)
+    uint256[46] private __gap;
 
     error IrysOFT__MaxSupplyExceeded();
     error IrysOFT__UnauthorizedMinter();
@@ -47,80 +44,66 @@ contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable,
         string memory _name,
         string memory _symbol,
         address _delegate,
-        uint256 _maxSupply
+        uint256 maxSupply
     ) public initializer {
         __Ownable_init(_delegate);
         __UUPSUpgradeable_init();
         __Pausable_init();
         __OFT_init(_name, _symbol, _delegate);
-        
-        // Initialize storage
-        OFTStorage storage $ = _getOFTStorage();
-        $.maxSupply = _maxSupply;
-        $.minters[_delegate] = true;
-        $.burners[_delegate] = true;
-        
+
+        // Initialize state variables directly
+        _maxSupply = maxSupply;
+        _minters[_delegate] = true;
+        _burners[_delegate] = true;
+
         // Mint initial supply to delegate/owner
-        _mint(_delegate, $.maxSupply);
-        
+        _mint(_delegate, _maxSupply);
+
         // Emit initialization event for transparency
-        emit Initialized(_name, _symbol, _delegate, $.maxSupply);
-    }
-    
-    function _getOFTStorage() private pure returns (OFTStorage storage $) {
-        assembly {
-            $.slot := OFT_STORAGE_LOCATION
-        }
+        emit Initialized(_name, _symbol, _delegate, _maxSupply);
     }
     
     function mint(address to, uint256 amount) external virtual whenNotPaused {
-        OFTStorage storage $ = _getOFTStorage();
-        if (!$.minters[msg.sender]) revert IrysOFT__UnauthorizedMinter();
-        if (totalSupply() + amount > $.maxSupply) revert IrysOFT__MaxSupplyExceeded();
-        
+        if (!_minters[msg.sender]) revert IrysOFT__UnauthorizedMinter();
+        if (totalSupply() + amount > _maxSupply) revert IrysOFT__MaxSupplyExceeded();
+
         _mint(to, amount);
         emit PrivilegedMint(to, amount, msg.sender);
     }
-    
+
     function burn(address from, uint256 amount) external virtual whenNotPaused {
-        OFTStorage storage $ = _getOFTStorage();
-        if (!$.burners[msg.sender]) revert IrysOFT__UnauthorizedBurner();
-        
+        if (!_burners[msg.sender]) revert IrysOFT__UnauthorizedBurner();
+
         _burn(from, amount);
         emit PrivilegedBurn(from, amount, msg.sender);
     }
-    
+
     function setMinter(address account, bool enabled) external onlyOwner {
         if (account == address(0)) revert IrysOFT__ZeroAddress();
-        OFTStorage storage $ = _getOFTStorage();
-        $.minters[account] = enabled;
+        _minters[account] = enabled;
         emit MinterSet(account, enabled);
     }
-    
+
     function setBurner(address account, bool enabled) external onlyOwner {
         if (account == address(0)) revert IrysOFT__ZeroAddress();
-        OFTStorage storage $ = _getOFTStorage();
-        $.burners[account] = enabled;
+        _burners[account] = enabled;
         emit BurnerSet(account, enabled);
     }
-    
+
     function isMinter(address account) external view returns (bool) {
-        OFTStorage storage $ = _getOFTStorage();
-        return $.minters[account];
+        return _minters[account];
     }
-    
+
     function isBurner(address account) external view returns (bool) {
-        OFTStorage storage $ = _getOFTStorage();
-        return $.burners[account];
+        return _burners[account];
     }
-    
+
     function getCurrentSupply() external view returns (uint256) {
         return totalSupply();
     }
-    
+
     function getMaxSupply() external view returns (uint256) {
-        OFTStorage storage $ = _getOFTStorage();
-        return $.maxSupply;
+        return _maxSupply;
     }
     
     function pause() external onlyOwner {
