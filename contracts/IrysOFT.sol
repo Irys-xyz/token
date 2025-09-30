@@ -2,17 +2,24 @@
 pragma solidity ^0.8.22;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { OFTUpgradeable } from "@layerzerolabs/oft-evm-upgradeable/contracts/oft/OFTUpgradeable.sol";
 
 /// @custom:oz-upgrades-unsafe-allow constructor
 /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, OFTUpgradeable {
-    uint256[50] private __gap;
+contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgradeable {
+    // Two-step ownership state
+    address private _pendingOwner;
+
+    uint256[49] private __gap;
 
     error IrysOFT__ZeroAddress();
+    error IrysOFT__RenounceOwnershipDisabled();
+    error IrysOFT__NotPendingOwner();
+
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferCanceled();
 
     event Initialized(string name, string symbol, address indexed delegate, uint256 totalSupply);
     
@@ -51,11 +58,43 @@ contract IrysOFT is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPS
     function unpause() external onlyOwner {
         _unpause();
     }
-    
-    function _authorizeUpgrade(address newImplementation) 
-        internal 
-        override 
-        onlyOwner 
+
+    /// @notice Returns the address of the pending owner
+    function pendingOwner() public view virtual returns (address) {
+        return _pendingOwner;
+    }
+
+    /// @notice Starts the ownership transfer of the contract to a new account
+    /// @dev Replaces the pending transfer if there is one
+    function transferOwnership(address newOwner) public virtual override onlyOwner {
+        if (newOwner == address(0)) revert IrysOFT__ZeroAddress();
+        _pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner(), newOwner);
+    }
+
+    /// @notice The new owner accepts the ownership transfer
+    function acceptOwnership() public virtual {
+        if (msg.sender != _pendingOwner) revert IrysOFT__NotPendingOwner();
+        delete _pendingOwner;
+        _transferOwnership(msg.sender);
+    }
+
+    /// @notice Cancels a pending ownership transfer
+    /// @dev Can only be called by the current owner
+    function cancelOwnershipTransfer() public virtual onlyOwner {
+        delete _pendingOwner;
+        emit OwnershipTransferCanceled();
+    }
+
+    /// @notice Ownership renouncement is disabled to prevent accidental loss of control
+    function renounceOwnership() public view override onlyOwner {
+        revert IrysOFT__RenounceOwnershipDisabled();
+    }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyOwner
     {}
     
     function _update(

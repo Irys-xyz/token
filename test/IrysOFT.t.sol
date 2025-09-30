@@ -38,6 +38,9 @@ contract IrysOFTTest is TestHelperOz5 {
     event Initialized(string name, string symbol, address indexed delegate, uint256 totalSupply);
     event Paused(address account);
     event Unpaused(address account);
+    event OwnershipTransferCanceled();
+    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
 
     function setUp() public virtual override {
         vm.deal(owner, 1000 ether);
@@ -252,6 +255,213 @@ contract IrysOFTTest is TestHelperOz5 {
 
         // Supply remains unchanged
         assertEq(token.totalSupply(), MAX_SUPPLY);
+    }
+
+    // ============ OWNERSHIP TESTS (Two-Step & Renouncement) ============
+
+    function test_two_step_ownership_transfer() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Step 1: Current owner proposes transfer
+        vm.prank(owner);
+        token.transferOwnership(newOwner);
+
+        // Ownership not transferred yet
+        assertEq(token.owner(), owner);
+        assertEq(token.pendingOwner(), newOwner);
+
+        // Old owner still has control
+        vm.prank(owner);
+        token.pause();
+        assertTrue(token.paused());
+
+        vm.prank(owner);
+        token.unpause();
+        assertFalse(token.paused());
+
+        // Step 2: New owner accepts ownership
+        vm.prank(newOwner);
+        token.acceptOwnership();
+
+        // Ownership now transferred
+        assertEq(token.owner(), newOwner);
+        assertEq(token.pendingOwner(), address(0));
+
+        // Old owner no longer has control
+        vm.expectRevert();
+        vm.prank(owner);
+        token.pause();
+
+        // New owner has control
+        vm.prank(newOwner);
+        token.pause();
+        assertTrue(token.paused());
+    }
+
+    function test_non_pending_owner_cannot_accept_ownership() public {
+        address newOwner = makeAddr("newOwner");
+        address attackerAddr = makeAddr("attackerAddr");
+
+        // Owner proposes transfer to newOwner
+        vm.prank(owner);
+        token.transferOwnership(newOwner);
+
+        // Attacker tries to accept ownership (should fail)
+        vm.expectRevert();
+        vm.prank(attackerAddr);
+        token.acceptOwnership();
+
+        // Ownership unchanged
+        assertEq(token.owner(), owner);
+        assertEq(token.pendingOwner(), newOwner);
+    }
+
+    function test_pending_owner_can_be_changed() public {
+        address firstPendingOwner = makeAddr("firstPendingOwner");
+        address secondPendingOwner = makeAddr("secondPendingOwner");
+
+        // Set first pending owner
+        vm.prank(owner);
+        token.transferOwnership(firstPendingOwner);
+        assertEq(token.pendingOwner(), firstPendingOwner);
+
+        // Change to second pending owner
+        vm.prank(owner);
+        token.transferOwnership(secondPendingOwner);
+        assertEq(token.pendingOwner(), secondPendingOwner);
+
+        // First pending owner cannot accept
+        vm.expectRevert();
+        vm.prank(firstPendingOwner);
+        token.acceptOwnership();
+
+        // Second pending owner can accept
+        vm.prank(secondPendingOwner);
+        token.acceptOwnership();
+        assertEq(token.owner(), secondPendingOwner);
+    }
+
+    function test_renounce_ownership_disabled() public {
+        // Test: renounceOwnership should revert
+        vm.expectRevert(IrysOFT.IrysOFT__RenounceOwnershipDisabled.selector);
+        vm.prank(owner);
+        token.renounceOwnership();
+
+        // Ownership unchanged
+        assertEq(token.owner(), owner);
+
+        // Owner still has control
+        vm.prank(owner);
+        token.pause();
+        assertTrue(token.paused());
+    }
+
+    function test_non_owner_cannot_transfer_ownership() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Non-owner tries to transfer ownership
+        vm.expectRevert();
+        vm.prank(attacker);
+        token.transferOwnership(newOwner);
+
+        // Ownership unchanged
+        assertEq(token.owner(), owner);
+    }
+
+    function test_owner_can_cancel_pending_transfer() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Owner initiates transfer
+        vm.prank(owner);
+        token.transferOwnership(newOwner);
+        assertEq(token.pendingOwner(), newOwner);
+
+        // Owner cancels transfer
+        vm.expectEmit(false, false, false, false);
+        emit OwnershipTransferCanceled();
+
+        vm.prank(owner);
+        token.cancelOwnershipTransfer();
+
+        // No pending owner anymore
+        assertEq(token.pendingOwner(), address(0));
+
+        // Original owner still in control
+        assertEq(token.owner(), owner);
+
+        // Canceled pending owner cannot accept
+        vm.expectRevert();
+        vm.prank(newOwner);
+        token.acceptOwnership();
+    }
+
+    function test_non_owner_cannot_cancel_transfer() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Owner initiates transfer
+        vm.prank(owner);
+        token.transferOwnership(newOwner);
+
+        // Non-owner tries to cancel
+        vm.expectRevert();
+        vm.prank(attacker);
+        token.cancelOwnershipTransfer();
+
+        // Pending owner unchanged
+        assertEq(token.pendingOwner(), newOwner);
+
+        // Pending owner can still accept
+        vm.prank(newOwner);
+        token.acceptOwnership();
+        assertEq(token.owner(), newOwner);
+    }
+
+    function test_cancel_when_no_pending_transfer() public {
+        // No pending transfer exists
+        assertEq(token.pendingOwner(), address(0));
+
+        // Cancel still works (no-op)
+        vm.expectEmit(false, false, false, false);
+        emit OwnershipTransferCanceled();
+
+        vm.prank(owner);
+        token.cancelOwnershipTransfer();
+
+        // Still no pending owner
+        assertEq(token.pendingOwner(), address(0));
+        assertEq(token.owner(), owner);
+    }
+
+    function test_cannot_transfer_ownership_to_zero_address() public {
+        // Owner tries to transfer to zero address
+        vm.expectRevert(IrysOFT.IrysOFT__ZeroAddress.selector);
+        vm.prank(owner);
+        token.transferOwnership(address(0));
+
+        // Ownership unchanged
+        assertEq(token.owner(), owner);
+        assertEq(token.pendingOwner(), address(0));
+    }
+
+    function test_ownership_transfer_events() public {
+        address newOwner = makeAddr("newOwner");
+
+        // Test OwnershipTransferStarted event on transferOwnership
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferStarted(owner, newOwner);
+
+        vm.prank(owner);
+        token.transferOwnership(newOwner);
+
+        // Test OwnershipTransferred event on acceptOwnership
+        vm.expectEmit(true, true, false, false);
+        emit OwnershipTransferred(owner, newOwner);
+
+        vm.prank(newOwner);
+        token.acceptOwnership();
+
+        // Verify ownership actually changed
+        assertEq(token.owner(), newOwner);
     }
 
     // ============ CROSS-CHAIN TRANSFER TESTS ============

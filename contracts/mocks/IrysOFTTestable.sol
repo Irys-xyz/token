@@ -2,30 +2,38 @@
 pragma solidity ^0.8.22;
 
 import { Initializable } from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import { OwnableUpgradeable } from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import { UUPSUpgradeable } from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import { PausableUpgradeable } from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
 import { OFTUpgradeable } from "@layerzerolabs/oft-evm-upgradeable/contracts/oft/OFTUpgradeable.sol";
 
 // Test version of IrysOFT that allows direct initialization (no proxy required)
-contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeable, UUPSUpgradeable, OFTUpgradeable {
+// Note: Retains old mint/burn functionality for testing purposes only
+contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgradeable {
     // ERC-7201 namespaced storage pattern
     struct OFTStorage {
         uint256 maxSupply;
         mapping(address => bool) minters;
         mapping(address => bool) burners;
     }
-    
+
     // keccak256(abi.encode(uint256(keccak256("irysOFT.storage.OFT")) - 1)) & ~bytes32(uint256(0xff))
     bytes32 private constant OFT_STORAGE_LOCATION = 0x0d0eb511d3307aa5801c8e31102dcaf47c45988241aa1d52644ea8a5557b0500;
-    
-    uint256[50] private __gap;
-    
+
+    // Two-step ownership state
+    address private _pendingOwner;
+
+    uint256[49] private __gap;
+
     error IrysOFT__MaxSupplyExceeded();
     error IrysOFT__UnauthorizedMinter();
     error IrysOFT__UnauthorizedBurner();
     error IrysOFT__ZeroAddress();
-    
+    error IrysOFT__RenounceOwnershipDisabled();
+    error IrysOFT__NotPendingOwner();
+
+    event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
+    event OwnershipTransferCanceled();
+
     event MinterSet(address indexed account, bool enabled);
     event BurnerSet(address indexed account, bool enabled);
     event PrivilegedMint(address indexed to, uint256 amount, address indexed minter);
@@ -122,11 +130,43 @@ contract IrysOFTTestable is Initializable, OwnableUpgradeable, PausableUpgradeab
     function unpause() external onlyOwner {
         _unpause();
     }
-    
-    function _authorizeUpgrade(address newImplementation) 
-        internal 
-        override 
-        onlyOwner 
+
+    /// @notice Returns the address of the pending owner
+    function pendingOwner() public view virtual returns (address) {
+        return _pendingOwner;
+    }
+
+    /// @notice Starts the ownership transfer of the contract to a new account
+    /// @dev Replaces the pending transfer if there is one
+    function transferOwnership(address newOwner) public virtual override onlyOwner {
+        if (newOwner == address(0)) revert IrysOFT__ZeroAddress();
+        _pendingOwner = newOwner;
+        emit OwnershipTransferStarted(owner(), newOwner);
+    }
+
+    /// @notice The new owner accepts the ownership transfer
+    function acceptOwnership() public virtual {
+        if (msg.sender != _pendingOwner) revert IrysOFT__NotPendingOwner();
+        delete _pendingOwner;
+        _transferOwnership(msg.sender);
+    }
+
+    /// @notice Cancels a pending ownership transfer
+    /// @dev Can only be called by the current owner
+    function cancelOwnershipTransfer() public virtual onlyOwner {
+        delete _pendingOwner;
+        emit OwnershipTransferCanceled();
+    }
+
+    /// @notice Ownership renouncement is disabled to prevent accidental loss of control
+    function renounceOwnership() public view override onlyOwner {
+        revert IrysOFT__RenounceOwnershipDisabled();
+    }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        override
+        onlyOwner
     {}
     
     function _update(
