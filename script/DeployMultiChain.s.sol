@@ -71,7 +71,7 @@ contract DeployMultiChainScript is Script {
         string memory tokenName = vm.envOr("TOKEN_NAME", string("Irys Token"));
         string memory tokenSymbol = vm.envOr("TOKEN_SYMBOL", string("IRYS"));
         
-        // Max supply examples (all values include 18 decimals):
+        // Total supply examples (all values include 18 decimals):
         // 1 million tokens:    1000000000000000000000000
         // 10 million tokens:   10000000000000000000000000
         // 100 million tokens:  100000000000000000000000000
@@ -79,18 +79,18 @@ contract DeployMultiChainScript is Script {
         // 1 billion tokens:    1000000000000000000000000000
         // 2 billion tokens:    2000000000000000000000000000
         // 10 billion tokens:   10000000000000000000000000000
-        uint256 maxSupply = vm.envOr("MAX_SUPPLY", uint256(2_000_000_000 * 10**18)); // Default 2B tokens
-        
-        // 3. Encode initialization data with minting included
+        uint256 totalSupply = vm.envOr("TOTAL_SUPPLY", uint256(2_000_000_000 * 10**18)); // Default 2B tokens
+
+        // 3. Encode initialization data
         bytes memory initData = abi.encodeWithSelector(
             IrysOFT.initialize.selector,
             tokenName,
             tokenSymbol,
-            deployer,  // deployer becomes owner and initial minter/burner
-            maxSupply  // This will be minted to deployer during initialization
+            deployer,  // deployer becomes owner and receives entire supply
+            totalSupply
         );
         
-        // 4. Deploy proxy with initialization (minting happens in constructor via initialize)
+        // 4. Deploy proxy with initialization (entire supply minted to deployer)
         ERC1967Proxy proxy = new ERC1967Proxy(address(implementation), initData);
         console.log("Proxy deployed at:", address(proxy));
         
@@ -102,12 +102,9 @@ contract DeployMultiChainScript is Script {
         console.log("Token name:", token.name());
         console.log("Token symbol:", token.symbol());
         console.log("Token decimals:", token.decimals());
-        console.log("Max supply:", token.getMaxSupply());
-        console.log("Current supply:", token.getCurrentSupply());
-        console.log("Deployer balance:", token.balanceOf(deployer)); // Should equal maxSupply
+        console.log("Total supply:", token.getCurrentSupply());
         console.log("Owner:", token.owner());
-        console.log("Deployer is minter:", token.isMinter(deployer));
-        console.log("Deployer is burner:", token.isBurner(deployer));
+        console.log("Owner balance:", token.balanceOf(deployer));
         console.log("Contract paused:", token.paused());
         
         vm.stopBroadcast();

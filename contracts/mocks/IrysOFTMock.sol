@@ -12,12 +12,13 @@ contract IrysOFTMock is IrysOFT {
         string memory _name,
         string memory _symbol,
         address _delegate,
-        uint256 _maxSupply
+        uint256 _totalSupply
     ) public initializer {
-        initialize(_name, _symbol, _delegate, _maxSupply);
+        initialize(_name, _symbol, _delegate, _totalSupply);
     }
 
-    function mint(address _to, uint256 _amount) public override {
+    // Note: contract uses fixed supply model
+    function mintForTesting(address _to, uint256 _amount) public {
         _mint(_to, _amount);
     }
 }

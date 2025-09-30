@@ -35,11 +35,7 @@ contract IrysOFTTest is TestHelperOz5 {
     uint256 private initialBalance = 100 ether;
 
     // Events to test
-    event MinterSet(address indexed account, bool enabled);
-    event BurnerSet(address indexed account, bool enabled);
-    event PrivilegedMint(address indexed to, uint256 amount, address indexed minter);
-    event PrivilegedBurn(address indexed from, uint256 amount, address indexed burner);
-    event Initialized(string name, string symbol, address indexed delegate, uint256 maxSupply);
+    event Initialized(string name, string symbol, address indexed delegate, uint256 totalSupply);
     event Paused(address account);
     event Unpaused(address account);
 
@@ -82,13 +78,7 @@ contract IrysOFTTest is TestHelperOz5 {
         aOFT.setPeer(bEid, addressToBytes32(address(bOFT)));
         bOFT.setPeer(aEid, addressToBytes32(address(aOFT)));
 
-        // Set minter roles for testing
-        aOFT.setMinter(owner, true);
-        bOFT.setMinter(owner, true);
-        vm.stopPrank();
-
-        // Transfer some tokens from owner to test users (since max supply is already minted to owner)
-        vm.startPrank(owner);
+        // Transfer some tokens from owner to test users (entire supply is minted to owner at deployment)
         aOFT.transfer(userA, initialBalance);
         bOFT.transfer(userB, initialBalance);
         vm.stopPrank();
@@ -109,232 +99,12 @@ contract IrysOFTTest is TestHelperOz5 {
         assertEq(aOFT.decimals(), 18);
         assertEq(bOFT.decimals(), 18);
 
-        // Check that initial supply was minted to owner
-        assertEq(aOFT.getMaxSupply(), 2_000_000_000 * 10**18);
-        assertEq(bOFT.getMaxSupply(), 2_000_000_000 * 10**18);
-
-        // Total supply should equal max supply since we minted everything
-        assertEq(aOFT.totalSupply(), aOFT.getMaxSupply());
-        assertEq(bOFT.totalSupply(), bOFT.getMaxSupply());
+        // Check that entire fixed supply was minted at deployment
+        assertEq(aOFT.totalSupply(), MAX_SUPPLY);
+        assertEq(bOFT.totalSupply(), MAX_SUPPLY);
     }
 
-    // ============ BURNER FUNCTIONALITY TESTS ============
-
-    function test_burn_with_authorized_burner() public {
-        // Setup: Give userA some tokens and make them a burner
-        vm.startPrank(owner);
-        token.transfer(userA, 1000 ether);
-        token.setBurner(userA, true);
-        vm.stopPrank();
-
-        uint256 burnAmount = 500 ether;
-        uint256 supplyBefore = token.totalSupply();
-        uint256 balanceBefore = token.balanceOf(userA);
-
-        // Test: Authorized burner can burn tokens
-        vm.prank(userA);
-        token.burn(userA, burnAmount);
-
-        assertEq(token.totalSupply(), supplyBefore - burnAmount);
-        assertEq(token.balanceOf(userA), balanceBefore - burnAmount);
-        assertEq(token.getCurrentSupply(), supplyBefore - burnAmount);
-    }
-
-    function test_burn_fails_with_unauthorized_burner() public {
-        // Setup: Give userA tokens but don't make them a burner
-        vm.prank(owner);
-        token.transfer(userA, 1000 ether);
-
-        // Test: Unauthorized burner cannot burn
-        vm.expectRevert(IrysOFT.IrysOFT__UnauthorizedBurner.selector);
-        vm.prank(userA);
-        token.burn(userA, 100 ether);
-    }
-
-    function test_burn_from_another_address() public {
-        // Setup: Give userA tokens and make userB a burner
-        vm.startPrank(owner);
-        token.transfer(userA, 1000 ether);
-        token.setBurner(userB, true);
-        vm.stopPrank();
-
-        uint256 burnAmount = 300 ether;
-        uint256 supplyBefore = token.totalSupply();
-
-        // Test: Burner can burn from another address
-        vm.prank(userB);
-        token.burn(userA, burnAmount);
-
-        assertEq(token.totalSupply(), supplyBefore - burnAmount);
-        assertEq(token.balanceOf(userA), 1000 ether - burnAmount);
-    }
-
-    function test_burn_fails_when_paused() public {
-        // Setup: Make userA a burner with tokens
-        vm.startPrank(owner);
-        token.transfer(userA, 1000 ether);
-        token.setBurner(userA, true);
-        token.pause();
-        vm.stopPrank();
-
-        // Test: Cannot burn when paused
-        vm.expectRevert();
-        vm.prank(userA);
-        token.burn(userA, 100 ether);
-    }
-
-    function test_burn_exceeds_balance_reverts() public {
-        // Setup: Give userA limited tokens and burner role
-        vm.startPrank(owner);
-        token.transfer(userA, 100 ether);
-        token.setBurner(userA, true);
-        vm.stopPrank();
-
-        // Test: Cannot burn more than balance
-        vm.expectRevert();
-        vm.prank(userA);
-        token.burn(userA, 200 ether);
-    }
-
-    function test_mint_after_burn_works() public {
-        // Setup: Burn some tokens first
-        vm.startPrank(owner);
-        token.burn(owner, 1000 ether);
-        uint256 supplyAfterBurn = token.totalSupply();
-
-        // Now we have room to mint
-        token.setMinter(userA, true);
-        vm.stopPrank();
-
-        // Test: Can mint after burn created room
-        vm.prank(userA);
-        token.mint(userB, 500 ether);
-
-        assertEq(token.totalSupply(), supplyAfterBurn + 500 ether);
-        assertEq(token.balanceOf(userB), 500 ether);
-        assertTrue(token.totalSupply() < MAX_SUPPLY);
-    }
-
-    // ============ MINTER ACCESS CONTROL TESTS ============
-
-    function test_minter_access_control() public {
-        // Since max supply is already minted, any mint should fail
-        vm.expectRevert(IrysOFT.IrysOFT__MaxSupplyExceeded.selector);
-        vm.prank(owner);
-        aOFT.mint(userA, 1);
-
-        // User should not be able to mint
-        vm.expectRevert(IrysOFT.IrysOFT__UnauthorizedMinter.selector);
-        vm.prank(userA);
-        aOFT.mint(userA, 1);
-
-        // Set user as minter (but still can't mint due to max supply)
-        vm.prank(owner);
-        aOFT.setMinter(userA, true);
-
-        // User is now a minter but still can't mint due to max supply
-        vm.expectRevert(IrysOFT.IrysOFT__MaxSupplyExceeded.selector);
-        vm.prank(userA);
-        aOFT.mint(userB, 1);
-
-        // Verify user is actually a minter
-        assertTrue(aOFT.isMinter(userA));
-    }
-
-    function test_max_supply_enforcement() public {
-        // Since we already minted max supply in initialize, any additional mint should fail
-        vm.expectRevert(IrysOFT.IrysOFT__MaxSupplyExceeded.selector);
-        vm.prank(owner);
-        aOFT.mint(userA, 1);
-    }
-
-    // ============ ROLE MANAGEMENT TESTS ============
-
-    function test_remove_minter_role() public {
-        // Setup: Add then remove minter role
-        vm.startPrank(owner);
-        token.setMinter(userA, true);
-        assertTrue(token.isMinter(userA));
-
-        token.setMinter(userA, false);
-        assertFalse(token.isMinter(userA));
-
-        // First burn to make room for minting
-        token.burn(owner, 1000 ether);
-        vm.stopPrank();
-
-        // Test: Removed minter cannot mint
-        vm.expectRevert(IrysOFT.IrysOFT__UnauthorizedMinter.selector);
-        vm.prank(userA);
-        token.mint(userB, 100 ether);
-    }
-
-    function test_remove_burner_role() public {
-        // Setup: Add then remove burner role
-        vm.startPrank(owner);
-        token.transfer(userA, 1000 ether);
-        token.setBurner(userA, true);
-        assertTrue(token.isBurner(userA));
-
-        token.setBurner(userA, false);
-        assertFalse(token.isBurner(userA));
-        vm.stopPrank();
-
-        // Test: Removed burner cannot burn
-        vm.expectRevert(IrysOFT.IrysOFT__UnauthorizedBurner.selector);
-        vm.prank(userA);
-        token.burn(userA, 100 ether);
-    }
-
-    function test_multiple_minters_and_burners() public {
-        // Setup: Add multiple minters and burners
-        vm.startPrank(owner);
-        token.setMinter(userA, true);
-        token.setMinter(userB, true);
-        token.setBurner(userA, true);
-        token.setBurner(userB, true);
-
-        // Transfer tokens for testing
-        token.transfer(userA, 1000 ether);
-        token.transfer(userB, 1000 ether);
-        vm.stopPrank();
-
-        // Test: Both can burn
-        vm.prank(userA);
-        token.burn(userA, 100 ether);
-
-        vm.prank(userB);
-        token.burn(userB, 100 ether);
-
-        // Test: Both can mint (after burns created room)
-        vm.prank(userA);
-        token.mint(userA, 50 ether);
-
-        vm.prank(userB);
-        token.mint(userB, 50 ether);
-
-        assertTrue(token.isMinter(userA));
-        assertTrue(token.isMinter(userB));
-        assertTrue(token.isBurner(userA));
-        assertTrue(token.isBurner(userB));
-    }
-
-    function test_authorization_functions() public {
-        // Test authorization checks
-        assertTrue(aOFT.isMinter(owner));
-        assertTrue(aOFT.isBurner(owner));
-        assertFalse(aOFT.isMinter(userA));
-        assertFalse(aOFT.isBurner(userA));
-
-        // Owner can set minter/burner roles
-        vm.prank(owner);
-        aOFT.setMinter(userA, true);
-        assertTrue(aOFT.isMinter(userA));
-
-        vm.prank(owner);
-        aOFT.setBurner(userB, true);
-        assertTrue(aOFT.isBurner(userB));
-    }
+    // The contract now implements fixed supply model - entire supply minted at deployment
 
     // ============ UPGRADE TESTS ============
 
@@ -355,8 +125,6 @@ contract IrysOFTTest is TestHelperOz5 {
     function test_state_preserved_after_upgrade() public {
         // Setup: Set some state
         vm.startPrank(owner);
-        token.setMinter(userA, true);
-        token.setBurner(userB, true);
         token.transfer(userA, 1000 ether);
         vm.stopPrank();
 
@@ -371,68 +139,10 @@ contract IrysOFTTest is TestHelperOz5 {
         // Test: State is preserved
         assertEq(token.totalSupply(), supplyBefore);
         assertEq(token.balanceOf(userA), balanceBefore);
-        assertTrue(token.isMinter(userA));
-        assertTrue(token.isBurner(userB));
         assertEq(token.owner(), owner);
     }
 
     // ============ EVENT EMISSION TESTS ============
-
-    function test_event_MinterSet() public {
-        vm.expectEmit(true, false, false, true);
-        emit MinterSet(userA, true);
-
-        vm.prank(owner);
-        token.setMinter(userA, true);
-
-        vm.expectEmit(true, false, false, true);
-        emit MinterSet(userA, false);
-
-        vm.prank(owner);
-        token.setMinter(userA, false);
-    }
-
-    function test_event_BurnerSet() public {
-        vm.expectEmit(true, false, false, true);
-        emit BurnerSet(userB, true);
-
-        vm.prank(owner);
-        token.setBurner(userB, true);
-
-        vm.expectEmit(true, false, false, true);
-        emit BurnerSet(userB, false);
-
-        vm.prank(owner);
-        token.setBurner(userB, false);
-    }
-
-    function test_event_PrivilegedMint() public {
-        // Setup: Create room for minting
-        vm.startPrank(owner);
-        token.burn(owner, 1000 ether);
-        token.setMinter(userA, true);
-        vm.stopPrank();
-
-        vm.expectEmit(true, false, true, true);
-        emit PrivilegedMint(userB, 100 ether, userA);
-
-        vm.prank(userA);
-        token.mint(userB, 100 ether);
-    }
-
-    function test_event_PrivilegedBurn() public {
-        // Setup
-        vm.startPrank(owner);
-        token.transfer(userA, 1000 ether);
-        token.setBurner(userB, true);
-        vm.stopPrank();
-
-        vm.expectEmit(true, false, true, true);
-        emit PrivilegedBurn(userA, 200 ether, userB);
-
-        vm.prank(userB);
-        token.burn(userA, 200 ether);
-    }
 
     function test_event_Paused_Unpaused() public {
         vm.expectEmit(false, false, false, true);
@@ -474,31 +184,16 @@ contract IrysOFTTest is TestHelperOz5 {
         assertEq(aOFT.balanceOf(userB), userBBalanceBefore + 1000);
     }
 
-    function test_pause_blocks_all_operations() public {
+    function test_pause_blocks_transfers() public {
         vm.startPrank(owner);
         token.transfer(userA, 1000 ether);
-        token.setMinter(userA, true);
-        token.setBurner(userA, true);
-        token.burn(owner, 1000 ether); // Make room for minting
         token.pause();
         vm.stopPrank();
 
-        // Test: All operations fail when paused
-        vm.startPrank(userA);
-
-        // Transfer fails
+        // Test: Transfers fail when paused
         vm.expectRevert();
+        vm.prank(userA);
         token.transfer(userB, 100 ether);
-
-        // Mint fails
-        vm.expectRevert();
-        token.mint(userB, 100 ether);
-
-        // Burn fails
-        vm.expectRevert();
-        token.burn(userA, 100 ether);
-
-        vm.stopPrank();
     }
 
     function test_only_owner_can_pause() public {
@@ -524,79 +219,39 @@ contract IrysOFTTest is TestHelperOz5 {
     // ============ SUPPLY TRACKING TESTS ============
 
     function test_supply_tracking() public {
-        // Check initial supply tracking
-        assertEq(aOFT.getCurrentSupply(), aOFT.getMaxSupply());
-
-        // Supply tracking should work correctly
-        uint256 burnAmount = 1000 ether;
-        vm.prank(owner);
-        aOFT.burn(owner, burnAmount);
-
-        assertEq(aOFT.getCurrentSupply(), aOFT.getMaxSupply() - burnAmount);
-        assertEq(aOFT.totalSupply(), aOFT.getMaxSupply() - burnAmount);
+        // Check fixed supply - entire supply minted at deployment
+        assertEq(aOFT.getCurrentSupply(), MAX_SUPPLY);
+        assertEq(aOFT.totalSupply(), MAX_SUPPLY);
     }
 
     // ============ EDGE CASES & SECURITY TESTS ============
 
-    function test_zero_address_validation() public {
-        vm.startPrank(owner);
+    function test_zero_address_validation_on_init() public {
+        // Test: Initializing with zero address delegate should revert
+        IrysOFT newTokenImpl = new IrysOFT(address(endpoints[aEid]));
 
-        // Test: Setting zero address as minter should revert
+        bytes memory initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "TestToken",
+            "TEST",
+            address(0), // zero address delegate
+            MAX_SUPPLY
+        );
+
         vm.expectRevert(IrysOFT.IrysOFT__ZeroAddress.selector);
-        token.setMinter(address(0), true);
-
-        // Test: Setting zero address as burner should revert
-        vm.expectRevert(IrysOFT.IrysOFT__ZeroAddress.selector);
-        token.setBurner(address(0), true);
-
-        // Create room for minting
-        token.burn(owner, 1000 ether);
-
-        // Test: Minting to zero address should revert (ERC20 behavior)
-        vm.expectRevert();
-        token.mint(address(0), 100 ether);
-
-        // Test: Burning from zero address should revert (no balance)
-        vm.expectRevert();
-        token.burn(address(0), 100 ether);
-
-        vm.stopPrank();
+        new ERC1967Proxy(address(newTokenImpl), initData);
     }
 
-    function test_max_supply_strictly_enforced() public {
-        // Setup: Burn just 1 token
-        vm.startPrank(owner);
-        token.burn(owner, 1);
-        token.setMinter(userA, true);
-        vm.stopPrank();
-
-        // Test: Can mint exactly 1 token
-        vm.prank(userA);
-        token.mint(userB, 1);
-
-        // Test: Cannot mint even 1 more
-        vm.expectRevert(IrysOFT.IrysOFT__MaxSupplyExceeded.selector);
-        vm.prank(userA);
-        token.mint(userB, 1);
-
+    function test_fixed_supply_immutable() public {
+        // Test: Total supply is fixed at deployment
         assertEq(token.totalSupply(), MAX_SUPPLY);
-    }
 
-    function test_reentrancy_protection() public {
-        // This would require a malicious contract, but we can test that 
-        // state changes happen in the correct order
-        vm.startPrank(owner);
-        token.burn(owner, 1000 ether);
-        token.setMinter(userA, true);
-        vm.stopPrank();
+        // Transfer some tokens
+        vm.prank(owner);
+        token.transfer(userA, 1000 ether);
 
-        uint256 supplyBefore = token.totalSupply();
-
-        // Mint should update state before external call
-        vm.prank(userA);
-        token.mint(userB, 500 ether);
-
-        assertEq(token.totalSupply(), supplyBefore + 500 ether);
+        // Supply remains unchanged
+        assertEq(token.totalSupply(), MAX_SUPPLY);
     }
 
     // ============ CROSS-CHAIN TRANSFER TESTS ============
