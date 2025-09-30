@@ -27,6 +27,10 @@ contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable,
     error IrysOFT__ZeroAddress();
     error IrysOFT__RenounceOwnershipDisabled();
     error IrysOFT__NotPendingOwner();
+    error IrysOFT__InvalidSupply();
+    error IrysOFT__SupplyTooLarge();
+    error IrysOFT__InvalidName();
+    error IrysOFT__InvalidSymbol();
 
     event OwnershipTransferStarted(address indexed previousOwner, address indexed newOwner);
     event OwnershipTransferCanceled();
@@ -46,6 +50,19 @@ contract IrysOFTTestable is Initializable, PausableUpgradeable, UUPSUpgradeable,
         address _delegate,
         uint256 maxSupply
     ) public initializer {
+        // Input validation (matching production contract)
+        if (_delegate == address(0)) revert IrysOFT__ZeroAddress();
+        if (maxSupply == 0) revert IrysOFT__InvalidSupply();
+        if (maxSupply > type(uint256).max / 2) revert IrysOFT__SupplyTooLarge();
+
+        // Name validation: must be non-empty and <= 50 chars
+        uint256 nameLength = bytes(_name).length;
+        if (nameLength == 0 || nameLength > 50) revert IrysOFT__InvalidName();
+
+        // Symbol validation: must be non-empty and <= 20 chars
+        uint256 symbolLength = bytes(_symbol).length;
+        if (symbolLength == 0 || symbolLength > 20) revert IrysOFT__InvalidSymbol();
+
         __Ownable_init(_delegate);
         __UUPSUpgradeable_init();
         __Pausable_init();

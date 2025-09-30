@@ -245,6 +245,94 @@ contract IrysOFTTest is TestHelperOz5 {
         new ERC1967Proxy(address(newTokenImpl), initData);
     }
 
+    function test_invalid_supply_validation() public {
+        // Test: Zero supply should revert
+        IrysOFT newTokenImpl = new IrysOFT(address(endpoints[aEid]));
+
+        bytes memory initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "TestToken",
+            "TEST",
+            owner,
+            0 // zero supply
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__InvalidSupply.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+    }
+
+    function test_supply_too_large_validation() public {
+        // Test: Supply > max/2 should revert
+        IrysOFT newTokenImpl = new IrysOFT(address(endpoints[aEid]));
+
+        bytes memory initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "TestToken",
+            "TEST",
+            owner,
+            type(uint256).max // max supply
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__SupplyTooLarge.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+    }
+
+    function test_invalid_name_validation() public {
+        // Test: Empty name should revert
+        IrysOFT newTokenImpl = new IrysOFT(address(endpoints[aEid]));
+
+        bytes memory initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "", // empty name
+            "TEST",
+            owner,
+            MAX_SUPPLY
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__InvalidName.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+
+        // Test: Name too long (> 50 chars) should revert
+        initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "ThisIsAVeryLongTokenNameThatExceedsTheFiftyCharacterLimitAndShouldFail",
+            "TEST",
+            owner,
+            MAX_SUPPLY
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__InvalidName.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+    }
+
+    function test_invalid_symbol_validation() public {
+        // Test: Empty symbol should revert
+        IrysOFT newTokenImpl = new IrysOFT(address(endpoints[aEid]));
+
+        bytes memory initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "TestToken",
+            "", // empty symbol
+            owner,
+            MAX_SUPPLY
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__InvalidSymbol.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+
+        // Test: Symbol too long (> 20 chars) should revert
+        initData = abi.encodeWithSelector(
+            IrysOFT.initialize.selector,
+            "TestToken",
+            "THISISAVERYLONGSYMBOLTHATEXCEEDSLIMIT",
+            owner,
+            MAX_SUPPLY
+        );
+
+        vm.expectRevert(IrysOFT.IrysOFT__InvalidSymbol.selector);
+        new ERC1967Proxy(address(newTokenImpl), initData);
+    }
+
     function test_fixed_supply_immutable() public {
         // Test: Total supply is fixed at deployment
         assertEq(token.totalSupply(), MAX_SUPPLY);
