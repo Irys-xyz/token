@@ -12,8 +12,6 @@ contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgr
     // Two-step ownership state
     address private _pendingOwner;
 
-    uint256[49] private __gap;
-
     error IrysOFT__ZeroAddress();
     error IrysOFT__RenounceOwnershipDisabled();
     error IrysOFT__NotPendingOwner();
