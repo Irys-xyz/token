@@ -15,7 +15,6 @@ contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgr
     error IrysOFT__ZeroAddress();
     error IrysOFT__RenounceOwnershipDisabled();
     error IrysOFT__NotPendingOwner();
-    error IrysOFT__InvalidSupply();
     error IrysOFT__SupplyTooLarge();
     error IrysOFT__InvalidName();
     error IrysOFT__InvalidSymbol();
@@ -38,7 +37,6 @@ contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgr
     ) public initializer {
         // Input validation
         if (_delegate == address(0)) revert IrysOFT__ZeroAddress();
-        if (_totalSupply == 0) revert IrysOFT__InvalidSupply();
         if (_totalSupply > type(uint256).max / 2) revert IrysOFT__SupplyTooLarge(); // Prevent overflow issues
 
         // Name validation: must be non-empty and <= 50 chars
@@ -54,8 +52,10 @@ contract IrysOFT is Initializable, PausableUpgradeable, UUPSUpgradeable, OFTUpgr
         __Pausable_init();
         __OFT_init(_name, _symbol, _delegate);
 
-        // Mint entire fixed supply to delegate/owner
-        _mint(_delegate, _totalSupply);
+        // Mint entire fixed supply to delegate/owner (if supply > 0)
+        if (_totalSupply > 0) {
+            _mint(_delegate, _totalSupply);
+        }
 
         emit Initialized(_name, _symbol, _delegate, _totalSupply);
     }
