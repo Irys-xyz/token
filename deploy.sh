@@ -2,7 +2,7 @@
 
 # IrysOFT Multi-Chain Deployment Script
 # Usage: ./deploy.sh [chain]
-# Supported chains: ethereum, arbitrum, polygon, base, sepolia, arbitrum-sepolia, polygon-amoy, base-sepolia
+# Supported chains: ethereum, bsc, base, sepolia, bsc-testnet, base-sepolia
 
 set -e  # Exit on any error
 
@@ -17,12 +17,10 @@ NC='\033[0m' # No Color
 # Chain configurations
 declare -A CHAIN_CONFIGS
 CHAIN_CONFIGS[ethereum]="1:ETHEREUM_RPC_URL:ETHERSCAN_API_KEY:https://etherscan.io"
-CHAIN_CONFIGS[arbitrum]="42161:ARBITRUM_RPC_URL:ARBISCAN_API_KEY:https://arbiscan.io"
-CHAIN_CONFIGS[polygon]="137:POLYGON_RPC_URL:POLYGONSCAN_API_KEY:https://polygonscan.com"
+CHAIN_CONFIGS[bsc]="56:BSC_RPC_URL:BSCSCAN_API_KEY:https://bscscan.com"
 CHAIN_CONFIGS[base]="8453:BASE_RPC_URL:BASESCAN_API_KEY:https://basescan.org"
 CHAIN_CONFIGS[sepolia]="11155111:SEPOLIA_RPC_URL:ETHERSCAN_API_KEY:https://sepolia.etherscan.io"
-CHAIN_CONFIGS[arbitrum-sepolia]="421614:ARBITRUM_SEPOLIA_RPC_URL:ARBISCAN_API_KEY:https://sepolia.arbiscan.io"
-CHAIN_CONFIGS[polygon-amoy]="80002:POLYGON_AMOY_RPC_URL:POLYGONSCAN_API_KEY:https://amoy.polygonscan.com"
+CHAIN_CONFIGS[bsc-testnet]="97:BSC_TESTNET_RPC_URL:BSCSCAN_API_KEY:https://testnet.bscscan.com"
 CHAIN_CONFIGS[base-sepolia]="84532:BASE_SEPOLIA_RPC_URL:BASESCAN_API_KEY:https://sepolia.basescan.org"
 
 # Script configuration
@@ -38,27 +36,25 @@ show_usage() {
     echo -e "${BLUE}Supported chains:${NC}"
     echo "  Mainnets:"
     echo "    ethereum       - Ethereum Mainnet"
-    echo "    arbitrum       - Arbitrum One"
-    echo "    polygon        - Polygon Mainnet"
+    echo "    bsc            - BSC Mainnet"
     echo "    base           - Base Mainnet"
     echo ""
     echo "  Testnets:"
     echo "    sepolia        - Ethereum Sepolia"
-    echo "    arbitrum-sepolia - Arbitrum Sepolia"
-    echo "    polygon-amoy   - Polygon Amoy Testnet"
+    echo "    bsc-testnet    - BSC Testnet"
     echo "    base-sepolia   - Base Sepolia"
     echo ""
     echo -e "${YELLOW}Examples:${NC}"
     echo "  ./deploy.sh sepolia"
     echo "  ./deploy.sh ethereum"
-    echo "  ./deploy.sh arbitrum-sepolia"
+    echo "  ./deploy.sh bsc-testnet"
 }
 
 # Function to deploy to all testnets
 deploy_all_testnets() {
     echo -e "${PURPLE} Deploying to all testnets...${NC}"
-    
-    local testnets=("sepolia" "arbitrum-sepolia" "polygon-amoy" "base-sepolia")
+
+    local testnets=("sepolia" "bsc-testnet" "base-sepolia")
     local failed_deployments=()
     
     for chain in "${testnets[@]}"; do
@@ -104,26 +100,88 @@ deploy_to_chain() {
     
     echo -e "${BLUE} Target: $CHAIN (Chain ID: $CHAIN_ID)${NC}"
     echo -e "${BLUE} RPC: $RPC_URL${NC}"
-    
+
     # Check deployer balance
     DEPLOYER=$(cast wallet address --private-key $PRIVATE_KEY)
     BALANCE=$(cast balance $DEPLOYER --rpc-url $RPC_URL)
     BALANCE_ETH=$(cast to-unit $BALANCE ether)
+    echo -e "${BLUE} Deployer: $DEPLOYER${NC}"
     echo -e "${BLUE} Deployer balance: ${BALANCE_ETH} ETH${NC}"
-    
-    # Check minimum balance (0.01 ETH for testnets, 0.1 ETH for mainnets)
-    if [[ "$CHAIN" == *"sepolia"* ]] || [[ "$CHAIN" == *"amoy"* ]]; then
-        MIN_BALANCE="10000000000000000"  # 0.01 ETH for testnets
-        MIN_BALANCE_ETH="0.01"
+
+    # Estimate deployment cost
+    echo -e "${YELLOW} Estimating deployment cost...${NC}"
+
+    # Run simulation to get gas estimate
+    SIMULATION_OUTPUT=$(forge script $SCRIPT_PATH --rpc-url $RPC_URL --private-key $PRIVATE_KEY 2>&1)
+    SIMULATION_EXIT_CODE=$?
+
+    if [ $SIMULATION_EXIT_CODE -ne 0 ]; then
+        echo -e "${RED} Failed to simulate deployment${NC}"
+        echo -e "${YELLOW} Using fallback minimum balance check${NC}"
+        if [[ "$CHAIN" == *"sepolia"* ]] || [[ "$CHAIN" == *"amoy"* ]]; then
+            MIN_BALANCE="10000000000000000"  # 0.01 ETH
+            MIN_BALANCE_ETH="0.01"
+        else
+            MIN_BALANCE="100000000000000000"  # 0.1 ETH
+            MIN_BALANCE_ETH="0.1"
+        fi
     else
-        MIN_BALANCE="100000000000000000"  # 0.1 ETH for mainnets
-        MIN_BALANCE_ETH="0.1"
+        # Try multiple parsing methods for gas estimate
+        ESTIMATED_GAS=$(echo "$SIMULATION_OUTPUT" | grep -i "estimated total gas used" | grep -oE '[0-9]{6,}' | head -1)
+
+        if [ -z "$ESTIMATED_GAS" ]; then
+            ESTIMATED_AMOUNT=$(echo "$SIMULATION_OUTPUT" | grep -i "estimated amount required" | grep -oE '0\.[0-9]+' | head -1)
+            if [ -n "$ESTIMATED_AMOUNT" ]; then
+                # Convert ETH to wei and back out the gas (rough estimate)
+                # This is a backup method
+                ESTIMATED_GAS="5500000"  # Conservative estimate
+            fi
+        fi
+
+        if [ -z "$ESTIMATED_GAS" ] || ! [[ "$ESTIMATED_GAS" =~ ^[0-9]+$ ]]; then
+            echo -e "${YELLOW} Could not parse gas estimate, using conservative estimate${NC}"
+            # Use conservative gas estimate based on typical OFT deployment
+            ESTIMATED_GAS="5500000"  # ~5.5M gas (conservative for proxy + implementation)
+            echo -e "${BLUE} Using conservative gas estimate: $ESTIMATED_GAS${NC}"
+        else
+            echo -e "${BLUE} Estimated gas from simulation: $ESTIMATED_GAS${NC}"
+        fi
+
+        # Get current gas price (in wei)
+        GAS_PRICE=$(cast gas-price --rpc-url $RPC_URL 2>/dev/null)
+
+        if [ -z "$GAS_PRICE" ] || ! [[ "$GAS_PRICE" =~ ^[0-9]+$ ]]; then
+            echo -e "${YELLOW} Could not get gas price, using fallback${NC}"
+            if [[ "$CHAIN" == *"sepolia"* ]] || [[ "$CHAIN" == *"amoy"* ]]; then
+                MIN_BALANCE="10000000000000000"  # 0.01 ETH
+                MIN_BALANCE_ETH="0.01"
+            else
+                MIN_BALANCE="100000000000000000"  # 0.1 ETH
+                MIN_BALANCE_ETH="0.1"
+            fi
+        else
+            # Calculate required ETH with 150% safety margin
+            # Formula: (gas * gasPrice * 3) / 2  (equivalent to * 1.5)
+            REQUIRED_WEI=$(( ESTIMATED_GAS * GAS_PRICE * 3 / 2 ))
+            MIN_BALANCE=$REQUIRED_WEI
+            MIN_BALANCE_ETH=$(cast to-unit $MIN_BALANCE ether 2>/dev/null)
+
+            GAS_PRICE_GWEI=$(cast to-unit $GAS_PRICE gwei 2>/dev/null)
+            echo -e "${BLUE} Current gas price: ${GAS_PRICE_GWEI} gwei${NC}"
+            echo -e "${BLUE} Required balance (with 150% safety margin): ${MIN_BALANCE_ETH} ETH${NC}"
+        fi
     fi
-    
+
+    # Check if deployer has sufficient balance
     if [ $(echo "$BALANCE < $MIN_BALANCE" | bc -l) -eq 1 ]; then
-        echo -e "${RED} Insufficient balance. Need at least $MIN_BALANCE_ETH ETH${NC}"
+        echo -e "${RED} Insufficient balance!${NC}"
+        echo -e "${RED} Required: ${MIN_BALANCE_ETH} ETH${NC}"
+        echo -e "${RED} Available: ${BALANCE_ETH} ETH${NC}"
+        echo -e "${RED} Shortfall: $(echo "$MIN_BALANCE_ETH - $BALANCE_ETH" | bc) ETH${NC}"
         return 1
     fi
+
+    echo -e "${GREEN} Balance check passed${NC}"
     
     # Deploy with or without verification
     local DEPLOY_CMD="forge script $SCRIPT_PATH --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --chain-id $CHAIN_ID"
@@ -154,7 +212,7 @@ main() {
     # Check if .env file exists
     if [ ! -f ".env" ]; then
         echo -e "${RED} .env file not found!${NC}"
-        echo -e "${YELLOW}Please copy .env.example to .env and configure it:${NC}"
+        echo -e "${YELLOW} Please copy .env.example to .env and configure it:${NC}"
         echo "cp .env.example .env"
         echo "Then edit .env with your private key and RPC URLs"
         exit 1
@@ -235,7 +293,7 @@ show_post_deployment() {
     echo "cast send <PROXY_ADDRESS> \"pause()\" --private-key \$PRIVATE_KEY --rpc-url \$RPC_URL"
     echo "cast send <PROXY_ADDRESS> \"unpause()\" --private-key \$PRIVATE_KEY --rpc-url \$RPC_URL"
     echo ""
-    echo -e "${YELLOW}⚠️  IMPORTANT: This contract uses a FIXED SUPPLY model${NC}"
+    echo -e "${YELLOW}  IMPORTANT: This contract uses a FIXED SUPPLY model${NC}"
     echo "  - Total supply is minted at deployment (immutable)"
     echo "  - No mint() or burn() functions available"
     echo "  - Bridging works via LayerZero OFT internal mechanisms"
