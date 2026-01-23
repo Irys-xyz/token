@@ -2,19 +2,20 @@
 set -euo pipefail
 
 # ============================================================
-# Setup and Test IrysNativeOFTAdapter (Local Mock Testing)
+# Setup and Test IrysNativeOFTAdapter (Testnet)
 # ============================================================
 #
-# This script tests the IrysNativeOFTAdapter using LZEndpointMock
-# to simulate cross-chain transfers locally without deploying
-# to any real remote chains.
+# This script tests the IrysNativeOFTAdapter on Irys testnet
+# using LZEndpointMock to simulate cross-chain transfers.
 #
 # Prerequisites:
 #   - Foundry installed
-#   - Local Anvil node running (or use Irys testnet RPC)
+#   - PRIVATE_KEY env var set with funded testnet account
 #
 # Usage:
-#   ./scripts/setup-and-test-adapter.sh [--rpc <url>] [--private-key <key>]
+#   PRIVATE_KEY=0x... ./scripts/setup-and-test-adapter.sh
+#   # or
+#   ./scripts/setup-and-test-adapter.sh --private-key 0x...
 #
 # ============================================================
 
@@ -36,8 +37,8 @@ step() { echo -e "\n${CYAN}═════════════════�
 # Parse Arguments
 # ============================================================
 
-RPC_URL="${RPC_URL:-http://localhost:8545}"
-PRIVATE_KEY="${PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"  # Anvil default
+RPC_URL="${RPC_URL:-https://testnet-rpc.irys.xyz}"
+PRIVATE_KEY="${PRIVATE_KEY:-}"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -54,6 +55,9 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Validate private key
+[[ -z "$PRIVATE_KEY" ]] && error "PRIVATE_KEY required. Set via env or --private-key flag"
 
 # Get deployer address
 DEPLOYER=$(cast wallet address "$PRIVATE_KEY" 2>/dev/null) || error "Invalid private key"
@@ -75,10 +79,10 @@ echo "  Remote EID: $REMOTE_EID"
 step "Step 1: Check Connection & Balance"
 
 BALANCE=$(cast balance "$DEPLOYER" --rpc-url "$RPC_URL" 2>/dev/null) || error "Cannot connect to RPC at $RPC_URL"
-info "Balance: $(cast from-wei "$BALANCE") ETH"
+info "Balance: $(cast from-wei "$BALANCE") IRYS"
 
 if [[ "$BALANCE" == "0" ]]; then
-    error "No balance. If using Anvil, make sure it's running: anvil"
+    error "No balance. Fund $DEPLOYER on Irys testnet first."
 fi
 
 # ============================================================
@@ -242,16 +246,16 @@ fi
 
 step "Step 9: Test Bridge: Native -> Remote OFT"
 
-TEST_AMOUNT="1000000000000000000"  # 1 ETH/native token
+TEST_AMOUNT="1000000000000000000"  # 1 IRYS
 
-info "Test amount: 1 native token"
+info "Test amount: 1 IRYS"
 
 # Check initial state
 INITIAL_ESCROWED=$(cast call "$ADAPTER" "totalEscrowed()(uint256)" --rpc-url "$RPC_URL")
-info "Initial escrowed: $(cast from-wei "$INITIAL_ESCROWED")"
+info "Initial escrowed: $(cast from-wei "$INITIAL_ESCROWED") IRYS"
 
 INITIAL_REMOTE_BALANCE=$(cast call "$REMOTE_OFT" "balanceOf(address)(uint256)" "$DEPLOYER" --rpc-url "$RPC_URL")
-info "Initial remote OFT balance: $(cast from-wei "$INITIAL_REMOTE_BALANCE")"
+info "Initial remote OFT balance: $(cast from-wei "$INITIAL_REMOTE_BALANCE") IRYS"
 
 # Get quote
 RECIPIENT_BYTES32=$(cast to-bytes32 "$DEPLOYER")
@@ -274,7 +278,7 @@ info "Native fee: $NATIVE_FEE"
 
 # Calculate total value
 TOTAL_VALUE=$((NATIVE_FEE + TEST_AMOUNT))
-info "Total value to send: $(cast from-wei "$TOTAL_VALUE")"
+info "Total value to send: $(cast from-wei "$TOTAL_VALUE") IRYS"
 
 # Execute send
 info "Executing bridge send..."
@@ -290,13 +294,14 @@ TX=$(cast send "$ADAPTER" \
 
 TX_HASH=$(echo "$TX" | jq -r '.transactionHash')
 success "Bridge TX: $TX_HASH"
+info "Explorer: https://testnet-explorer.irys.xyz/tx/$TX_HASH"
 
 # Check final state
 FINAL_ESCROWED=$(cast call "$ADAPTER" "totalEscrowed()(uint256)" --rpc-url "$RPC_URL")
-info "Final escrowed: $(cast from-wei "$FINAL_ESCROWED")"
+info "Final escrowed: $(cast from-wei "$FINAL_ESCROWED") IRYS"
 
 FINAL_REMOTE_BALANCE=$(cast call "$REMOTE_OFT" "balanceOf(address)(uint256)" "$DEPLOYER" --rpc-url "$RPC_URL")
-info "Final remote OFT balance: $(cast from-wei "$FINAL_REMOTE_BALANCE")"
+info "Final remote OFT balance: $(cast from-wei "$FINAL_REMOTE_BALANCE") IRYS"
 
 # Verify escrow increased
 ESCROW_DIFF=$((FINAL_ESCROWED - INITIAL_ESCROWED))
@@ -326,7 +331,7 @@ info "Bridge back amount: 0.5 tokens"
 
 # Check adapter native balance before
 ADAPTER_BALANCE_BEFORE=$(cast balance "$ADAPTER" --rpc-url "$RPC_URL")
-info "Adapter balance before: $(cast from-wei "$ADAPTER_BALANCE_BEFORE")"
+info "Adapter balance before: $(cast from-wei "$ADAPTER_BALANCE_BEFORE") IRYS"
 
 # Get quote from remote OFT
 info "Getting quote from remote OFT..."
@@ -356,10 +361,11 @@ TX_BACK=$(cast send "$REMOTE_OFT" \
 
 TX_BACK_HASH=$(echo "$TX_BACK" | jq -r '.transactionHash')
 success "Bridge back TX: $TX_BACK_HASH"
+info "Explorer: https://testnet-explorer.irys.xyz/tx/$TX_BACK_HASH"
 
 # Check final escrow
 FINAL_ESCROWED_2=$(cast call "$ADAPTER" "totalEscrowed()(uint256)" --rpc-url "$RPC_URL")
-info "Final escrowed after bridge back: $(cast from-wei "$FINAL_ESCROWED_2")"
+info "Final escrowed after bridge back: $(cast from-wei "$FINAL_ESCROWED_2") IRYS"
 
 EXPECTED_FINAL=$((FINAL_ESCROWED - BRIDGE_BACK_AMOUNT))
 if [[ "$FINAL_ESCROWED_2" == "$EXPECTED_FINAL" ]]; then
@@ -384,7 +390,7 @@ cast send "$ADAPTER" "testAddEscrow()" --value "1000000000000000000" \
 # Credit to the adapter itself (which has receive() so it won't fail)
 # Instead, let's check the claimable state
 CLAIMABLE=$(cast call "$ADAPTER" "claimable(address)(uint256)" "$DEPLOYER" --rpc-url "$RPC_URL")
-info "Claimable for deployer: $(cast from-wei "$CLAIMABLE")"
+info "Claimable for deployer: $(cast from-wei "$CLAIMABLE") IRYS"
 
 # ============================================================
 # Summary
@@ -392,12 +398,18 @@ info "Claimable for deployer: $(cast from-wei "$CLAIMABLE")"
 
 step "Test Summary"
 
+EXPLORER_BASE="https://testnet-explorer.irys.xyz"
+
 echo ""
 echo "Deployed Contracts:"
 echo "  Local LZEndpointMock:  $LOCAL_ENDPOINT"
+echo "    Explorer: $EXPLORER_BASE/address/$LOCAL_ENDPOINT"
 echo "  Remote LZEndpointMock: $REMOTE_ENDPOINT"
+echo "    Explorer: $EXPLORER_BASE/address/$REMOTE_ENDPOINT"
 echo "  Adapter:               $ADAPTER"
+echo "    Explorer: $EXPLORER_BASE/address/$ADAPTER"
 echo "  Remote OFT:            $REMOTE_OFT"
+echo "    Explorer: $EXPLORER_BASE/address/$REMOTE_OFT"
 echo ""
 echo "Tests Completed:"
 echo "  ✓ token() returns address(0)"
@@ -408,4 +420,4 @@ echo "  ✓ Bridge: Native -> Remote OFT"
 echo "  ✓ Bridge: Remote OFT -> Native"
 echo ""
 
-success "All tests passed!"
+success "All tests passed on Irys testnet!"
